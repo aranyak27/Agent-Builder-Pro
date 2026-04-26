@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "python-3.11"]
 
 [deployment]
 router = "application"
@@ -10,6 +10,26 @@ env = { "CI" = "true" }
 
 [workflows]
 runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Voice Agent Worker"
+
+[[workflows.workflow]]
+name = "Voice Agent Worker"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 artifacts/voice-agent-worker/agent.py dev"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -26,3 +46,15 @@ externalPort = 8080
 [[ports]]
 localPort = 8081
 externalPort = 80
+
+[[ports]]
+localPort = 20599
+externalPort = 3000
+
+[userenv]
+
+[userenv.shared]
+LIVEKIT_URL = "wss://voiceaiaranyak-z4qcxrcz.livekit.cloud"
+
+[nix]
+channel = "stable-25_05"

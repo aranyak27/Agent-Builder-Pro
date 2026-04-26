@@ -8,3 +8,67 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export interface CreateVoiceTokenBody {
+  /** The LiveKit room name to join */
+  roomName: string;
+  /** Display name of the participant */
+  participantName: string;
+}
+
+export interface VoiceToken {
+  token: string;
+  roomName: string;
+  serverUrl: string;
+}
+
+export interface VoiceSession {
+  id: number;
+  roomName: string;
+  participantName: string;
+  startedAt: string;
+  endedAt?: string | null;
+  durationSeconds?: number | null;
+  messageCount: number;
+}
+
+export interface VoiceSessionList {
+  sessions: VoiceSession[];
+  total: number;
+}
+
+export type VoiceMessageRole =
+  (typeof VoiceMessageRole)[keyof typeof VoiceMessageRole];
+
+export const VoiceMessageRole = {
+  user: "user",
+  assistant: "assistant",
+} as const;
+
+export interface VoiceMessage {
+  id: number;
+  sessionId: number;
+  role: VoiceMessageRole;
+  content: string;
+  createdAt: string;
+}
+
+export interface VoiceMessageList {
+  messages: VoiceMessage[];
+}
+
+export interface VoiceStats {
+  totalSessions: number;
+  totalMessages: number;
+  avgDurationSeconds?: number | null;
+  sessionsToday: number;
+}
+
+export type ListVoiceSessionsParams = {
+  limit?: number;
+  offset?: number;
+};

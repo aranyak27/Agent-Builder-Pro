@@ -14,3 +14,93 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Creates a LiveKit access token for a participant to join a voice agent room
+ * @summary Generate a LiveKit token
+ */
+export const CreateVoiceTokenBody = zod.object({
+  roomName: zod.string().describe("The LiveKit room name to join"),
+  participantName: zod.string().describe("Display name of the participant"),
+});
+
+export const CreateVoiceTokenResponse = zod.object({
+  token: zod.string(),
+  roomName: zod.string(),
+  serverUrl: zod.string(),
+});
+
+/**
+ * Returns all voice sessions with transcript and metadata
+ * @summary List voice sessions
+ */
+export const listVoiceSessionsQueryLimitDefault = 20;
+export const listVoiceSessionsQueryOffsetDefault = 0;
+
+export const ListVoiceSessionsQueryParams = zod.object({
+  limit: zod.coerce.number().default(listVoiceSessionsQueryLimitDefault),
+  offset: zod.coerce.number().default(listVoiceSessionsQueryOffsetDefault),
+});
+
+export const ListVoiceSessionsResponse = zod.object({
+  sessions: zod.array(
+    zod.object({
+      id: zod.number(),
+      roomName: zod.string(),
+      participantName: zod.string(),
+      startedAt: zod.coerce.date(),
+      endedAt: zod.coerce.date().nullish(),
+      durationSeconds: zod.number().nullish(),
+      messageCount: zod.number(),
+    }),
+  ),
+  total: zod.number(),
+});
+
+/**
+ * Returns a single session with full transcript
+ * @summary Get a voice session
+ */
+export const GetVoiceSessionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetVoiceSessionResponse = zod.object({
+  id: zod.number(),
+  roomName: zod.string(),
+  participantName: zod.string(),
+  startedAt: zod.coerce.date(),
+  endedAt: zod.coerce.date().nullish(),
+  durationSeconds: zod.number().nullish(),
+  messageCount: zod.number(),
+});
+
+/**
+ * @summary Get transcript messages for a session
+ */
+export const GetVoiceSessionMessagesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetVoiceSessionMessagesResponse = zod.object({
+  messages: zod.array(
+    zod.object({
+      id: zod.number(),
+      sessionId: zod.number(),
+      role: zod.enum(["user", "assistant"]),
+      content: zod.string(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * Returns aggregate stats — total sessions, messages, avg duration
+ * @summary Get voice agent statistics
+ */
+export const GetVoiceStatsResponse = zod.object({
+  totalSessions: zod.number(),
+  totalMessages: zod.number(),
+  avgDurationSeconds: zod.number().nullish(),
+  sessionsToday: zod.number(),
+});

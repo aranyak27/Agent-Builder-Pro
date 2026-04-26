@@ -6,4 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./createVoiceTokenBody";
+export * from "./errorResponse";
 export * from "./healthStatus";
+export * from "./listVoiceSessionsParams";
+export * from "./voiceMessage";
+export * from "./voiceMessageList";
+export * from "./voiceMessageRole";
+export * from "./voiceSession";
+export * from "./voiceSessionList";
+export * from "./voiceStats";
+export * from "./voiceToken";

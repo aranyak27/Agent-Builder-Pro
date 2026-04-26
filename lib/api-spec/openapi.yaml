@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: voice
+    description: Voice agent operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,117 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /voice/token:
+    post:
+      operationId: createVoiceToken
+      tags: [voice]
+      summary: Generate a LiveKit token
+      description: Creates a LiveKit access token for a participant to join a voice agent room
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVoiceTokenBody"
+      responses:
+        "200":
+          description: Token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceToken"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /voice/sessions:
+    get:
+      operationId: listVoiceSessions
+      tags: [voice]
+      summary: List voice sessions
+      description: Returns all voice sessions with transcript and metadata
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceSessionList"
+
+  /voice/sessions/{id}:
+    get:
+      operationId: getVoiceSession
+      tags: [voice]
+      summary: Get a voice session
+      description: Returns a single session with full transcript
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Session details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceSession"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /voice/sessions/{id}/messages:
+    get:
+      operationId: getVoiceSessionMessages
+      tags: [voice]
+      summary: Get transcript messages for a session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceMessageList"
+
+  /voice/stats:
+    get:
+      operationId: getVoiceStats
+      tags: [voice]
+      summary: Get voice agent statistics
+      description: Returns aggregate stats — total sessions, messages, avg duration
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +147,127 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    CreateVoiceTokenBody:
+      type: object
+      properties:
+        roomName:
+          type: string
+          description: The LiveKit room name to join
+        participantName:
+          type: string
+          description: Display name of the participant
+      required:
+        - roomName
+        - participantName
+
+    VoiceToken:
+      type: object
+      properties:
+        token:
+          type: string
+        roomName:
+          type: string
+        serverUrl:
+          type: string
+      required:
+        - token
+        - roomName
+        - serverUrl
+
+    VoiceSession:
+      type: object
+      properties:
+        id:
+          type: integer
+        roomName:
+          type: string
+        participantName:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationSeconds:
+          type: integer
+          nullable: true
+        messageCount:
+          type: integer
+      required:
+        - id
+        - roomName
+        - participantName
+        - startedAt
+        - messageCount
+
+    VoiceSessionList:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceSession"
+        total:
+          type: integer
+      required:
+        - sessions
+        - total
+
+    VoiceMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: integer
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - sessionId
+        - role
+        - content
+        - createdAt
+
+    VoiceMessageList:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceMessage"
+      required:
+        - messages
+
+    VoiceStats:
+      type: object
+      properties:
+        totalSessions:
+          type: integer
+        totalMessages:
+          type: integer
+        avgDurationSeconds:
+          type: number
+          nullable: true
+        sessionsToday:
+          type: integer
+      required:
+        - totalSessions
+        - totalMessages
+        - sessionsToday

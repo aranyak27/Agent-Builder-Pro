@@ -1,0 +1,11 @@
+{
+  "name": "@workspace/voice-agent-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "python3 agent.py dev",
+    "start": "python3 agent.py start",
+    "install-deps": "pip3 install -r requirements.txt"
+  }
+}

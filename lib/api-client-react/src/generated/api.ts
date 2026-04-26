@@ -5,18 +5,31 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  CreateVoiceTokenBody,
+  ErrorResponse,
+  HealthStatus,
+  ListVoiceSessionsParams,
+  VoiceMessageList,
+  VoiceSession,
+  VoiceSessionList,
+  VoiceStats,
+  VoiceToken,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -92,6 +105,444 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Creates a LiveKit access token for a participant to join a voice agent room
+ * @summary Generate a LiveKit token
+ */
+export const getCreateVoiceTokenUrl = () => {
+  return `/api/voice/token`;
+};
+
+export const createVoiceToken = async (
+  createVoiceTokenBody: CreateVoiceTokenBody,
+  options?: RequestInit,
+): Promise<VoiceToken> => {
+  return customFetch<VoiceToken>(getCreateVoiceTokenUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createVoiceTokenBody),
+  });
+};
+
+export const getCreateVoiceTokenMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createVoiceToken>>,
+    TError,
+    { data: BodyType<CreateVoiceTokenBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createVoiceToken>>,
+  TError,
+  { data: BodyType<CreateVoiceTokenBody> },
+  TContext
+> => {
+  const mutationKey = ["createVoiceToken"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createVoiceToken>>,
+    { data: BodyType<CreateVoiceTokenBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createVoiceToken(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateVoiceTokenMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createVoiceToken>>
+>;
+export type CreateVoiceTokenMutationBody = BodyType<CreateVoiceTokenBody>;
+export type CreateVoiceTokenMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Generate a LiveKit token
+ */
+export const useCreateVoiceToken = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createVoiceToken>>,
+    TError,
+    { data: BodyType<CreateVoiceTokenBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createVoiceToken>>,
+  TError,
+  { data: BodyType<CreateVoiceTokenBody> },
+  TContext
+> => {
+  return useMutation(getCreateVoiceTokenMutationOptions(options));
+};
+
+/**
+ * Returns all voice sessions with transcript and metadata
+ * @summary List voice sessions
+ */
+export const getListVoiceSessionsUrl = (params?: ListVoiceSessionsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/voice/sessions?${stringifiedParams}`
+    : `/api/voice/sessions`;
+};
+
+export const listVoiceSessions = async (
+  params?: ListVoiceSessionsParams,
+  options?: RequestInit,
+): Promise<VoiceSessionList> => {
+  return customFetch<VoiceSessionList>(getListVoiceSessionsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListVoiceSessionsQueryKey = (
+  params?: ListVoiceSessionsParams,
+) => {
+  return [`/api/voice/sessions`, ...(params ? [params] : [])] as const;
+};
+
+export const getListVoiceSessionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listVoiceSessions>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListVoiceSessionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listVoiceSessions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListVoiceSessionsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listVoiceSessions>>
+  > = ({ signal }) => listVoiceSessions(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listVoiceSessions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListVoiceSessionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listVoiceSessions>>
+>;
+export type ListVoiceSessionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List voice sessions
+ */
+
+export function useListVoiceSessions<
+  TData = Awaited<ReturnType<typeof listVoiceSessions>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListVoiceSessionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listVoiceSessions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListVoiceSessionsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns a single session with full transcript
+ * @summary Get a voice session
+ */
+export const getGetVoiceSessionUrl = (id: number) => {
+  return `/api/voice/sessions/${id}`;
+};
+
+export const getVoiceSession = async (
+  id: number,
+  options?: RequestInit,
+): Promise<VoiceSession> => {
+  return customFetch<VoiceSession>(getGetVoiceSessionUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetVoiceSessionQueryKey = (id: number) => {
+  return [`/api/voice/sessions/${id}`] as const;
+};
+
+export const getGetVoiceSessionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getVoiceSession>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getVoiceSession>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetVoiceSessionQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getVoiceSession>>> = ({
+    signal,
+  }) => getVoiceSession(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getVoiceSession>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetVoiceSessionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getVoiceSession>>
+>;
+export type GetVoiceSessionQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get a voice session
+ */
+
+export function useGetVoiceSession<
+  TData = Awaited<ReturnType<typeof getVoiceSession>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getVoiceSession>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetVoiceSessionQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get transcript messages for a session
+ */
+export const getGetVoiceSessionMessagesUrl = (id: number) => {
+  return `/api/voice/sessions/${id}/messages`;
+};
+
+export const getVoiceSessionMessages = async (
+  id: number,
+  options?: RequestInit,
+): Promise<VoiceMessageList> => {
+  return customFetch<VoiceMessageList>(getGetVoiceSessionMessagesUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetVoiceSessionMessagesQueryKey = (id: number) => {
+  return [`/api/voice/sessions/${id}/messages`] as const;
+};
+
+export const getGetVoiceSessionMessagesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getVoiceSessionMessages>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getVoiceSessionMessages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetVoiceSessionMessagesQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getVoiceSessionMessages>>
+  > = ({ signal }) =>
+    getVoiceSessionMessages(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getVoiceSessionMessages>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetVoiceSessionMessagesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getVoiceSessionMessages>>
+>;
+export type GetVoiceSessionMessagesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get transcript messages for a session
+ */
+
+export function useGetVoiceSessionMessages<
+  TData = Awaited<ReturnType<typeof getVoiceSessionMessages>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getVoiceSessionMessages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetVoiceSessionMessagesQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns aggregate stats — total sessions, messages, avg duration
+ * @summary Get voice agent statistics
+ */
+export const getGetVoiceStatsUrl = () => {
+  return `/api/voice/stats`;
+};
+
+export const getVoiceStats = async (
+  options?: RequestInit,
+): Promise<VoiceStats> => {
+  return customFetch<VoiceStats>(getGetVoiceStatsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetVoiceStatsQueryKey = () => {
+  return [`/api/voice/stats`] as const;
+};
+
+export const getGetVoiceStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getVoiceStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getVoiceStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetVoiceStatsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getVoiceStats>>> = ({
+    signal,
+  }) => getVoiceStats({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getVoiceStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetVoiceStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getVoiceStats>>
+>;
+export type GetVoiceStatsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get voice agent statistics
+ */
+
+export function useGetVoiceStats<
+  TData = Awaited<ReturnType<typeof getVoiceStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getVoiceStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetVoiceStatsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
