@@ -1,10 +1,12 @@
 import { Router } from "express";
-import { AccessToken } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { CreateVoiceTokenBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { voiceSessionsTable } from "@workspace/db";
 
 const router = Router();
+
+const AGENT_NAME = "mumbai-bank-collector";
 
 router.post("/token", async (req, res) => {
   const parse = CreateVoiceTokenBody.safeParse(req.body);
@@ -22,6 +24,21 @@ router.post("/token", async (req, res) => {
   if (!apiKey || !apiSecret || !serverUrl) {
     res.status(500).json({ error: "LiveKit credentials not configured" });
     return;
+  }
+
+  // Create the room with our named agent explicitly dispatched to it.
+  // This ensures "mumbai-bank-collector" handles the room — not any default cloud agent.
+  const roomService = new RoomServiceClient(serverUrl, apiKey, apiSecret);
+  try {
+    await roomService.createRoom({
+      name: roomName,
+      agents: [{ agentName: AGENT_NAME }],
+    });
+  } catch (err: any) {
+    // Room may already exist — that's fine, ignore the conflict
+    if (!err?.message?.includes("already exists")) {
+      console.error("Failed to create/configure room:", err);
+    }
   }
 
   const at = new AccessToken(apiKey, apiSecret, {
