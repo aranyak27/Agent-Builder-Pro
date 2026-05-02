@@ -353,10 +353,12 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            # Silero VAD takes ~5s to load on cold start + ~4s Python imports = ~9s.
-            # Default timeout is 10s which is too tight on slower production hardware.
-            # 30s gives plenty of headroom; once loaded, all calls are instant.
+            # Silero VAD takes ~5s on cold start; default 10s timeout is too tight.
             initialize_process_timeout=30.0,
+            # Only pre-warm 1 idle process. The default of 4 causes all 4 to load
+            # the silero model simultaneously → RAM spikes → load > 0.7 threshold
+            # → worker marks itself unavailable and rejects every incoming call.
+            num_idle_processes=1,
             agent_name=agent_name,
             port=0,
         )
