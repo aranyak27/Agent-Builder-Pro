@@ -25,6 +25,7 @@ load_dotenv()
 from livekit.agents import (
     AutoSubscribe,
     JobContext,
+    JobProcess,
     WorkerOptions,
     cli,
     function_tool,
@@ -34,6 +35,13 @@ from livekit.plugins import deepgram, openai as lk_openai, silero
 
 logger = logging.getLogger("voice-agent")
 
+
+
+def prewarm(proc: JobProcess) -> None:
+    """Load the silero VAD model before any call arrives.
+    Runs once per subprocess — model takes ~5s on cold start, then instant thereafter.
+    initialize_process_timeout must be > 10s to accommodate this."""
+    proc.userdata["vad"] = silero.VAD.load()
 
 
 # Internal API base — always localhost (co-located with API server in both dev and prod)
@@ -152,9 +160,8 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Connecting to room: {room_name}")
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-    # Load VAD in a thread so it never blocks the async event loop.
-    # The model is pre-downloaded by start.sh so this completes in < 1s.
-    vad = await asyncio.to_thread(silero.VAD.load)
+    # VAD was loaded in prewarm() before this call arrived — just grab it.
+    vad = ctx.proc.userdata["vad"]
 
     # Build the OpenAI client — uses Replit AI Integrations proxy when available
     openai_base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL")
@@ -345,7 +352,12 @@ if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
+            prewarm_fnc=prewarm,
+            # Silero VAD takes ~5s to load on cold start + ~4s Python imports = ~9s.
+            # Default timeout is 10s which is too tight on slower production hardware.
+            # 30s gives plenty of headroom; once loaded, all calls are instant.
+            initialize_process_timeout=30.0,
             agent_name=agent_name,
-            port=0,  # random port — avoids conflict with proxy in both dev and production
+            port=0,
         )
     )
