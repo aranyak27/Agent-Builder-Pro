@@ -11,6 +11,7 @@ Usage:
   python3 agent.py dev      # development mode (file watching / hot reload)
 """
 
+import asyncio
 import os
 import json
 import logging
@@ -98,9 +99,10 @@ Use the outcome type that best describes how the call ended:
 
 Say a brief closing line to the customer AFTER calling the tool, then end the call.
 
-CALL CLOSING:
-- Every call must end with a clear outcome captured via the tool.
-- Always thank the customer for their time before ending.
+ENDING THE CALL:
+- After calling the capture_call_outcome tool, say a brief, warm closing line (e.g. "Thank you for your time. Have a good day. Goodbye.") and then stop speaking — the call will disconnect automatically.
+- If the customer says "bye", "goodbye", "ok thanks", or any clear farewell, call capture_call_outcome immediately with the most appropriate outcome type, then say your closing line.
+- Do not keep talking after the farewell — one short closing sentence is enough.
 - This is a real-time voice call — keep all responses concise and conversational.
 """
 
@@ -145,7 +147,8 @@ async def entrypoint(ctx: JobContext):
     ) -> str:
         """
         Capture the structured outcome of this collections call and send it to
-        the CRM. Must be called once before ending every call.
+        the CRM. Must be called once before ending every call. The call will
+        disconnect automatically a few seconds after this tool is called.
         """
         outcome_data: dict[str, str] = {}
         if amount:
@@ -174,10 +177,18 @@ async def entrypoint(ctx: JobContext):
                 ) as resp:
                     result = await resp.json()
                     logger.info(f"Outcome captured: {outcome_type} → session {result.get('sessionId')}")
-                    return f"Outcome recorded successfully: {outcome_type}"
         except Exception as e:
             logger.error(f"Failed to capture outcome: {e}")
-            return f"Outcome noted locally (could not reach CRM): {outcome_type}"
+
+        # Disconnect after a short delay — gives Priya time to speak
+        # the closing line before the room is torn down.
+        async def _disconnect_after_closing():
+            await asyncio.sleep(7)
+            logger.info("Disconnecting room after call outcome")
+            await ctx.room.disconnect()
+
+        asyncio.create_task(_disconnect_after_closing())
+        return f"Outcome recorded: {outcome_type}. Say your closing line now — the call will end in a few seconds."
 
     # ────────────────────────────────────────────────────────────────────────
 
