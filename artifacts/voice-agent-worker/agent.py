@@ -13,7 +13,10 @@ Usage:
 """
 
 import os
+import json
 import logging
+import aiohttp
+from typing import Annotated
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,11 +27,15 @@ from livekit.agents import (
     JobProcess,
     WorkerOptions,
     cli,
+    function_tool,
 )
 from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import cartesia, deepgram, openai as lk_openai, silero
 
 logger = logging.getLogger("voice-agent")
+
+# Internal API base — agent posts outcomes directly to the API server
+API_BASE = os.environ.get("API_BASE_URL", "http://localhost:8080")
 
 
 # ─────────────────────────────────────────────
@@ -81,8 +88,19 @@ HARD RULES — never break these:
 - Never give legal advice. Never mention or imply legal action of any kind.
 - Never promise anything a human agent hasn't approved.
 
+CALL OUTCOME — MANDATORY:
+Before ending every call, you MUST call the capture_call_outcome tool with the structured result.
+Use the outcome type that best describes how the call ended:
+- promise_to_pay: customer committed to paying. Fields: amount, payment_date.
+- already_paid: customer says they already paid. Fields: payment_mode, payment_date.
+- callback_request: customer asked for a callback. Fields: callback_time.
+- dispute: customer disputes the debt or amount. Fields: reason.
+- transfer_to_human: abusive, emergency, or job loss. Fields: reason.
+
+Say a brief closing line to the customer AFTER calling the tool, then end the call.
+
 CALL CLOSING:
-- Every call must end with a clear outcome: payment commitment with amount and date, or a noted reason for non-commitment.
+- Every call must end with a clear outcome captured via the tool.
 - Always thank the customer for their time before ending.
 - This is a real-time voice call — keep all responses concise and conversational.
 """
@@ -102,7 +120,8 @@ def prewarm(proc: JobProcess):
 
 async def entrypoint(ctx: JobContext):
     """Main agent entrypoint — called for each incoming room/participant."""
-    logger.info(f"Connecting to room: {ctx.room.name}")
+    room_name = ctx.room.name
+    logger.info(f"Connecting to room: {room_name}")
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     # Build the OpenAI client — uses Replit AI Integrations proxy when available
@@ -112,11 +131,62 @@ async def entrypoint(ctx: JobContext):
         or os.environ.get("OPENAI_API_KEY", "placeholder")
     )
 
+    # ── Function tool: capture structured call outcome ──────────────────────
+    @function_tool
+    async def capture_call_outcome(
+        outcome_type: Annotated[
+            str,
+            "The call outcome type. One of: promise_to_pay, already_paid, callback_request, dispute, transfer_to_human",
+        ],
+        amount: Annotated[str, "Amount the customer committed to pay (for promise_to_pay)"] = "",
+        payment_date: Annotated[str, "Date of payment or promised payment (for promise_to_pay or already_paid)"] = "",
+        payment_mode: Annotated[str, "Payment mode used, e.g. UPI, NEFT, card (for already_paid)"] = "",
+        callback_time: Annotated[str, "Preferred time for callback (for callback_request)"] = "",
+        reason: Annotated[str, "Reason for dispute or transfer to human (for dispute or transfer_to_human)"] = "",
+    ) -> str:
+        """
+        Capture the structured outcome of this collections call and send it to
+        the CRM. Must be called once before ending every call.
+        """
+        outcome_data: dict[str, str] = {}
+        if amount:
+            outcome_data["amount"] = amount
+        if payment_date:
+            outcome_data["payment_date"] = payment_date
+        if payment_mode:
+            outcome_data["payment_mode"] = payment_mode
+        if callback_time:
+            outcome_data["callback_time"] = callback_time
+        if reason:
+            outcome_data["reason"] = reason
+
+        payload = {
+            "roomName": room_name,
+            "outcomeType": outcome_type,
+            "outcomeData": outcome_data,
+        }
+
+        try:
+            async with aiohttp.ClientSession() as http:
+                async with http.post(
+                    f"{API_BASE}/api/voice/outcome",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    result = await resp.json()
+                    logger.info(f"Outcome captured: {outcome_type} → session {result.get('sessionId')}")
+                    return f"Outcome recorded successfully: {outcome_type}"
+        except Exception as e:
+            logger.error(f"Failed to capture outcome: {e}")
+            return f"Outcome noted locally (could not reach CRM): {outcome_type}"
+
+    # ────────────────────────────────────────────────────────────────────────
+
     session = AgentSession(
         vad=ctx.proc.userdata["vad"],
         stt=deepgram.STT(
             api_key=os.environ["DEEPGRAM_API_KEY"],
-            language="en-IN",       # Indian English for better accent recognition
+            language="en-IN",
         ),
         llm=lk_openai.LLM(
             model="gpt-4o-mini",
@@ -132,7 +202,10 @@ async def entrypoint(ctx: JobContext):
         min_interruption_duration=0.5,
     )
 
-    agent = Agent(instructions=SYSTEM_PROMPT)
+    agent = Agent(
+        instructions=SYSTEM_PROMPT,
+        tools=[capture_call_outcome],
+    )
 
     await session.start(agent, room=ctx.room)
 
@@ -149,6 +222,6 @@ if __name__ == "__main__":
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            agent_name="mumbai-bank-collector",   # explicit name for dispatch
+            agent_name="mumbai-bank-collector",
         )
     )
