@@ -24,12 +24,12 @@ args = "Voice Agent Worker"
 name = "Voice Agent Worker"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python3 artifacts/voice-agent-worker/agent.py dev"
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [agent]
 stack = "PNPM_WORKSPACE"

@@ -2,14 +2,13 @@
 Voice Agent Worker  — Mumbai Bank Collections Agent (v1 prompt)
 ===============================================================
 LiveKit Agents v1.x using:
-- Deepgram  — Speech-to-Text (STT)
+- Deepgram  — Speech-to-Text (STT) + Text-to-Speech (TTS)
 - OpenAI    — Language Model (LLM) via Replit AI proxy
-- Cartesia  — Text-to-Speech (TTS)
 - Silero    — Voice Activity Detection (VAD)
 
 Usage:
-  python3 agent.py dev      # development mode (auto-create rooms)
   python3 agent.py start    # production mode (wait for dispatch)
+  python3 agent.py dev      # development mode (file watching / hot reload)
 """
 
 import os
@@ -193,11 +192,9 @@ async def entrypoint(ctx: JobContext):
             base_url=openai_base_url,
             api_key=openai_api_key,
         ),
-        tts=lk_openai.TTS(
-            model="tts-1",
-            voice="shimmer",          # professional female voice for Priya
-            base_url=openai_base_url,
-            api_key=openai_api_key,
+        tts=deepgram.TTS(
+            model="aura-2-andromeda-en",   # professional female voice for Priya
+            api_key=os.environ["DEEPGRAM_API_KEY"],
         ),
         allow_interruptions=True,
         min_endpointing_delay=0.5,
