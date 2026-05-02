@@ -3,10 +3,13 @@
 # in the same container so they are always co-located.
 
 # ── Python dependencies ───────────────────────────────────────────────────────
-echo "[start.sh] Installing voice agent Python dependencies..."
-python3 -m pip install -q -r artifacts/voice-agent-worker/requirements.txt \
-  && echo "[start.sh] Python dependencies ready." \
-  || echo "[start.sh] WARNING: pip install had errors — worker may still run if already installed."
+# Deps are installed at BUILD time (see artifact.toml services.production.build)
+# so cold starts skip ~30s of pip install. We only verify at runtime as a
+# safety net in case someone deploys without rebuilding.
+if ! python3 -c "import livekit.agents, deepgram, openai" >/dev/null 2>&1; then
+  echo "[start.sh] Voice agent Python deps missing — installing now (slow path)..."
+  python3 -m pip install -q -r artifacts/voice-agent-worker/requirements.txt
+fi
 
 # ── Voice Agent Worker (background, auto-restart on crash) ───────────────────
 # IMPORTANT: No sed pipe — output goes directly to the container log so nothing

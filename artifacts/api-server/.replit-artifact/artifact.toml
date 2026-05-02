@@ -15,7 +15,10 @@ run = "pnpm --filter @workspace/api-server run dev"
 [services.production]
 
 [services.production.build]
-args = ["pnpm", "--filter", "@workspace/api-server", "run", "build"]
+# Build the API server AND install the voice agent's Python dependencies at
+# build time, so the production container does not pay a ~30s pip install on
+# every cold start. This is critical for low-latency call handling.
+args = ["bash", "-c", "pnpm --filter @workspace/api-server run build && python3 -m pip install --no-cache-dir -r artifacts/voice-agent-worker/requirements.txt"]
 
 [services.production.build.env]
 NODE_ENV = "production"

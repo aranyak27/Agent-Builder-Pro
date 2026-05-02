@@ -240,7 +240,8 @@ async def entrypoint(ctx: JobContext):
             model="nova-2-general",
             api_key=os.environ["DEEPGRAM_API_KEY"],
             language="en-IN",
-            endpointing_ms=400,
+            # Tighter endpointing → faster turn detection (was 400ms)
+            endpointing_ms=250,
         ),
         llm=lk_openai.LLM(
             model="gpt-4o-mini",
@@ -252,8 +253,9 @@ async def entrypoint(ctx: JobContext):
             api_key=os.environ["DEEPGRAM_API_KEY"],
         ),
         allow_interruptions=True,
-        min_endpointing_delay=0.5,
-        min_interruption_duration=0.5,
+        # Lower turn-taking thresholds for snappier replies (was 0.5 / 0.5)
+        min_endpointing_delay=0.3,
+        min_interruption_duration=0.3,
     )
 
     agent = Agent(
@@ -332,12 +334,20 @@ if __name__ == "__main__":
     # to the dev worker.  Production start.sh leaves this unset → "mumbai-bank-collector".
     agent_name = os.environ.get("AGENT_NAME", "mumbai-bank-collector")
     logger.info(f"Starting worker as agent_name={agent_name!r}")
+    # Keep two warm subprocesses ready so an incoming call never waits for a
+    # fresh interpreter to spin up ("no warmed process available for job").
+    # If the host is small (autoscale or 1-vCPU VM) override with WORKER_IDLE=1.
+    idle_processes = int(os.environ.get("WORKER_IDLE", "2"))
+
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
-            # No VAD prewarm needed — using Deepgram endpointing for turn detection.
+            # No VAD prewarm — using Deepgram endpointing for turn detection.
             # This eliminates subprocess CPU spikes that caused "worker at full capacity".
-            num_idle_processes=1,
+            num_idle_processes=idle_processes,
+            # Raise the load-shed threshold so transient CPU spikes during STT
+            # don't cause LiveKit to stop routing jobs to us mid-call (default 0.7).
+            load_threshold=0.95,
             agent_name=agent_name,
             port=0,
         )
