@@ -2,29 +2,24 @@
 # Production entrypoint — starts both the API server and the voice agent worker
 # in the same container so they are always co-located.
 
-set -e
-
-# ── Python dependencies (install if not already present) ─────────────────────
+# ── Python dependencies ───────────────────────────────────────────────────────
 echo "[start.sh] Installing voice agent Python dependencies..."
 python3 -m pip install -q -r artifacts/voice-agent-worker/requirements.txt \
   && echo "[start.sh] Python dependencies ready." \
   || echo "[start.sh] WARNING: pip install had errors — worker may still run if already installed."
 
 # ── Voice Agent Worker (background, auto-restart on crash) ───────────────────
-# IMPORTANT: cd into the worker directory before launching so that sys.argv[0]
-# is a simple filename ("agent.py").  The livekit forkserver process re-execs
-# the script by that path — if it's relative from a different CWD it crashes.
-WORKER_DIR="$(pwd)/artifacts/voice-agent-worker"
-
+# IMPORTANT: No sed pipe — output goes directly to the container log so nothing
+# is buffered or dropped.  The livekit forkserver re-execs the script by
+# sys.argv[0]; agent.py makes that path absolute via os.path.abspath(__file__).
 _run_worker() {
   while true; do
     echo "[start.sh] Starting voice agent worker (agent_name=mumbai-bank-collector)..."
-    (
-      cd "$WORKER_DIR"
-      HEALTH_PORT=8090 API_BASE_URL=http://localhost:8080 PYTHONUNBUFFERED=1 \
-        python3 -u agent.py start 2>&1
-    ) | sed -u 's/^/[worker] /' || true
-    echo "[start.sh] Worker exited — restarting in 5s..."
+    HEALTH_PORT=8090 \
+    API_BASE_URL=http://localhost:8080 \
+    PYTHONUNBUFFERED=1 \
+      python3 -u artifacts/voice-agent-worker/agent.py start
+    echo "[start.sh] Worker exited (code=$?) — restarting in 5s..."
     sleep 5
   done
 }

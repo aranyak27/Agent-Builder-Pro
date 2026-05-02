@@ -54,10 +54,10 @@ def _start_health_server(port: int) -> None:
     logger.info(f"Health server started on port {port}")
 
 
-# Start health server in production (when HEALTH_PORT is set by artifact config)
-_health_port = int(os.environ.get("HEALTH_PORT", 0))
-if _health_port:
-    _start_health_server(_health_port)
+# NOTE: health server is started inside __main__ only — NOT here at module level.
+# When forkserver spawns a subprocess to handle a call it re-imports this file;
+# if the health server bind ran here, the subprocess would try to bind the same
+# port as the main process → OSError: Address already in use → call crash.
 
 
 # ─────────────────────────────────────────────
@@ -323,14 +323,16 @@ async def entrypoint(ctx: JobContext):
 if __name__ == "__main__":
     import sys
 
-    # Fix forkserver path resolution in production: the forkserver process re-execs
-    # the main script by the path in sys.argv[0].  If that path is relative
-    # (e.g. "artifacts/voice-agent-worker/agent.py") but the forkserver CWD differs
-    # from the caller's CWD, the re-exec fails.  Making sys.argv[0] absolute and
-    # cd-ing into the script's directory lets forkserver always find "agent.py".
-    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Start health server HERE (main process only) — never at module level.
+    # Forkserver re-imports this file in each subprocess; if health server ran
+    # at module level the subprocess would collide on the same port → crash.
+    _health_port = int(os.environ.get("HEALTH_PORT", 0))
+    if _health_port:
+        _start_health_server(_health_port)
+
+    # Fix forkserver path resolution: make sys.argv[0] absolute so that when
+    # forkserver re-execs this script it can always find it regardless of CWD.
     sys.argv[0] = os.path.abspath(__file__)
-    os.chdir(_script_dir)
 
     # AGENT_NAME separates dev and production workers on the same LiveKit project.
     # Dev: set AGENT_NAME=mumbai-bank-collector-dev so production calls never route
