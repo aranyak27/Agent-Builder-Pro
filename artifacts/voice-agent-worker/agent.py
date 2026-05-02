@@ -195,6 +195,7 @@ async def entrypoint(ctx: JobContext):
     session = AgentSession(
         vad=ctx.proc.userdata["vad"],
         stt=deepgram.STT(
+            model="nova-2-phonecall",
             api_key=os.environ["DEEPGRAM_API_KEY"],
             language="en-IN",
         ),
@@ -204,7 +205,7 @@ async def entrypoint(ctx: JobContext):
             api_key=openai_api_key,
         ),
         tts=deepgram.TTS(
-            model="aura-2-andromeda-en",   # professional female voice for Priya
+            model="aura-2-hera-en",
             api_key=os.environ["DEEPGRAM_API_KEY"],
         ),
         allow_interruptions=True,
