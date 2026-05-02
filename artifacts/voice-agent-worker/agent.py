@@ -13,9 +13,10 @@ Usage:
 
 import asyncio
 import os
-import json
 import logging
+import threading
 import aiohttp
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Annotated
 from dotenv import load_dotenv
 
@@ -34,8 +35,30 @@ from livekit.plugins import deepgram, openai as lk_openai, silero
 
 logger = logging.getLogger("voice-agent")
 
-# Internal API base — agent posts outcomes directly to the API server
+# Internal API base — always localhost (co-located with API server in both dev and prod)
 API_BASE = os.environ.get("API_BASE_URL", "http://localhost:8080")
+
+
+def _start_health_server(port: int) -> None:
+    """Minimal HTTP server so Replit knows this worker is alive in production."""
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok","service":"voice-agent-worker"}')
+        def log_message(self, *_):
+            pass
+
+    srv = HTTPServer(("", port), _Handler)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    logger.info(f"Health server started on port {port}")
+
+
+# Start health server in production (when HEALTH_PORT is set by artifact config)
+_health_port = int(os.environ.get("HEALTH_PORT", 0))
+if _health_port:
+    _start_health_server(_health_port)
 
 
 # ─────────────────────────────────────────────
@@ -186,20 +209,28 @@ async def entrypoint(ctx: JobContext):
             "needsReview": needs_review,
         }
 
-        try:
-            async with aiohttp.ClientSession() as http:
-                async with http.post(
-                    f"{API_BASE}/api/voice/outcome",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
-                    result = await resp.json()
-                    logger.info(
-                        f"Outcome captured: {outcome_type} | confidence={confidence_clamped}% "
-                        f"| needs_review={needs_review} → session {result.get('sessionId')}"
-                    )
-        except Exception as e:
-            logger.error(f"Failed to capture outcome: {e}")
+        # Retry up to 3 times with exponential backoff — outcome loss is not acceptable
+        for attempt in range(3):
+            try:
+                async with aiohttp.ClientSession() as http:
+                    async with http.post(
+                        f"{API_BASE}/api/voice/outcome",
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as resp:
+                        result = await resp.json()
+                        logger.info(
+                            f"Outcome captured: {outcome_type} | confidence={confidence_clamped}% "
+                            f"| needs_review={needs_review} → session {result.get('sessionId')}"
+                        )
+                        break  # success — stop retrying
+            except Exception as e:
+                wait = 2 ** attempt  # 1s, 2s, 4s
+                if attempt < 2:
+                    logger.warning(f"Outcome save attempt {attempt + 1} failed ({e}), retrying in {wait}s…")
+                    await asyncio.sleep(wait)
+                else:
+                    logger.error(f"All 3 outcome save attempts failed for room {room_name}: {e}")
 
         # Disconnect after a short delay — gives Priya time to speak
         # the closing line before the room is torn down.
@@ -262,15 +293,22 @@ async def entrypoint(ctx: JobContext):
             return
 
         async def _save_message(role: str, content: str) -> None:
-            try:
-                async with aiohttp.ClientSession() as http:
-                    await http.post(
-                        f"{API_BASE}/api/voice/transcript",
-                        json={"roomName": room_name, "role": role, "content": content},
-                        timeout=aiohttp.ClientTimeout(total=5),
-                    )
-            except Exception as exc:
-                logger.warning(f"Failed to save transcript message: {exc}")
+            for attempt in range(3):
+                try:
+                    async with aiohttp.ClientSession() as http:
+                        async with http.post(
+                            f"{API_BASE}/api/voice/transcript",
+                            json={"roomName": room_name, "role": role, "content": content},
+                            timeout=aiohttp.ClientTimeout(total=5),
+                        ) as resp:
+                            if resp.status < 300:
+                                break  # success
+                            raise aiohttp.ClientError(f"HTTP {resp.status}")
+                except Exception as exc:
+                    if attempt < 2:
+                        await asyncio.sleep(1)
+                    else:
+                        logger.warning(f"Transcript save failed after 3 attempts ({role}): {exc}")
 
         asyncio.ensure_future(_save_message(item.role, text))
     # ─────────────────────────────────────────────────────────────────────────
@@ -291,5 +329,6 @@ if __name__ == "__main__":
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
             agent_name="mumbai-bank-collector",
+            port=0,  # random port — avoids conflict with proxy in both dev and production
         )
     )
