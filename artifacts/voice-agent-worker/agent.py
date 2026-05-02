@@ -254,9 +254,13 @@ async def entrypoint(ctx: JobContext):
 
     session = AgentSession(
         stt=deepgram.STT(
-            model="nova-2-general",
+            # Nova-3 multilingual supports code-switching across English, Hindi
+            # and 8 other languages — required so the customer can speak Hindi
+            # or Hinglish and Priya still understands. (Nova-2 with en-IN only
+            # transcribed English and silently dropped Hindi audio.)
+            model="nova-3-general",
             api_key=os.environ["DEEPGRAM_API_KEY"],
-            language="en-IN",
+            language="multi",
             # Tighter endpointing → faster turn detection (was 400ms)
             endpointing_ms=250,
         ),
