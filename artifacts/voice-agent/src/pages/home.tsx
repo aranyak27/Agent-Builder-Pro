@@ -115,10 +115,22 @@ function ActiveCallUI({ roomName, onLeave }: { roomName: string, onLeave: () => 
   const { state: agentState, audioTrack } = useVoiceAssistant();
   const [waitSeconds, setWaitSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wasConnectedRef = useRef(false);
 
   const isConnected = connectionState === ConnectionState.Connected;
   // Agent has joined when it has an audio track or is actively speaking/listening/thinking
   const agentReady = agentState === "speaking" || agentState === "listening" || agentState === "thinking" || !!audioTrack;
+
+  // If we ever connected and then become Disconnected (e.g. agent ended the
+  // call after transfer_to_human and deleted the room), tear down the
+  // LiveKitRoom and return to the start screen — don't sit on a "connecting"
+  // spinner waiting for a room that no longer exists.
+  useEffect(() => {
+    if (isConnected) wasConnectedRef.current = true;
+    if (wasConnectedRef.current && connectionState === ConnectionState.Disconnected) {
+      onLeave();
+    }
+  }, [connectionState, isConnected, onLeave]);
 
   // Count how long we've been waiting for the agent
   useEffect(() => {

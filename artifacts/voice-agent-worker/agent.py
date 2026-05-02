@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from livekit import api as lk_api
 from livekit.agents import (
     AutoSubscribe,
     JobContext,
@@ -222,14 +223,30 @@ async def entrypoint(ctx: JobContext):
                 else:
                     logger.error(f"All 3 outcome save attempts failed for room {room_name}: {e}")
 
-        # Disconnect after a short delay — gives Priya time to speak
-        # the closing line before the room is torn down.
-        async def _disconnect_after_closing():
-            await asyncio.sleep(7)
-            logger.info("Disconnecting room after call outcome")
-            await ctx.room.disconnect()
+        # End the call after a short delay so Priya can speak the closing line.
+        # transfer_to_human ends faster (no need for a long pleasantry).
+        # We DELETE the room (server-side) instead of just disconnecting the
+        # agent — that way the customer's client gets a clean Disconnected
+        # event and the UI returns to the start screen instead of getting
+        # stuck on a "connecting…" spinner trying to reach an empty room.
+        delay_seconds = 3 if outcome_type == "transfer_to_human" else 6
 
-        asyncio.create_task(_disconnect_after_closing())
+        async def _end_call_after_closing():
+            await asyncio.sleep(delay_seconds)
+            logger.info(f"Ending call (outcome={outcome_type}) — deleting room {room_name}")
+            try:
+                async with lk_api.LiveKitAPI() as lkapi:
+                    await lkapi.room.delete_room(
+                        lk_api.DeleteRoomRequest(room=room_name)
+                    )
+            except Exception as e:
+                logger.warning(f"delete_room failed for {room_name}: {e} — falling back to agent disconnect")
+                try:
+                    await ctx.room.disconnect()
+                except Exception:
+                    pass
+
+        asyncio.create_task(_end_call_after_closing())
         review_note = " This will be flagged for human review." if needs_review else ""
         return f"Outcome recorded: {outcome_type} (confidence {confidence_clamped}%).{review_note} Say your closing line now — the call will end in a few seconds."
 
