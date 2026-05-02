@@ -321,6 +321,11 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
+    import multiprocessing
+    # Force 'fork' start method — avoids forkserver path-resolution crash in production
+    # (forkserver tries to re-exec the script by relative path which fails in the container).
+    multiprocessing.set_start_method("fork", force=True)
+
     # AGENT_NAME separates dev and production workers on the same LiveKit project.
     # Dev: set AGENT_NAME=mumbai-bank-collector-dev so production calls never route
     # to the dev worker.  Production start.sh leaves this unset → "mumbai-bank-collector".
