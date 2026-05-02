@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
+import { AccessToken, AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk";
 import { CreateVoiceTokenBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { voiceSessionsTable } from "@workspace/db";
@@ -26,21 +26,32 @@ router.post("/token", async (req, res) => {
     return;
   }
 
-  // Create the room with our named agent explicitly dispatched to it.
-  // This ensures "mumbai-bank-collector" handles the room — not any default cloud agent.
+  // 1. Ensure room exists
   const roomService = new RoomServiceClient(serverUrl, apiKey, apiSecret);
   try {
-    await roomService.createRoom({
-      name: roomName,
-      agents: [{ agentName: AGENT_NAME }],
-    });
-  } catch (err: any) {
-    // Room may already exist — that's fine, ignore the conflict
-    if (!err?.message?.includes("already exists")) {
-      console.error("Failed to create/configure room:", err);
-    }
+    await roomService.createRoom({ name: roomName });
+  } catch {
+    // Room already exists — that's fine
   }
 
+  // 2. Explicitly dispatch our named agent to this room.
+  //    This works whether the room is new or already existed, and
+  //    overrides any default cloud agent (e.g. Aria) that might otherwise answer.
+  const dispatchClient = new AgentDispatchClient(serverUrl, apiKey, apiSecret);
+  try {
+    const existing = await dispatchClient.listDispatch(roomName);
+    const alreadyDispatched = existing.some((d) => d.agentName === AGENT_NAME);
+    if (!alreadyDispatched) {
+      await dispatchClient.createDispatch(roomName, AGENT_NAME);
+      req.log.info({ roomName, agentName: AGENT_NAME }, "Agent dispatch created");
+    } else {
+      req.log.info({ roomName, agentName: AGENT_NAME }, "Agent already dispatched to room");
+    }
+  } catch (err) {
+    req.log.warn({ err, roomName }, "Agent dispatch failed — bot may not respond");
+  }
+
+  // 3. Generate participant access token
   const at = new AccessToken(apiKey, apiSecret, {
     identity: participantName,
     name: participantName,
@@ -57,17 +68,13 @@ router.post("/token", async (req, res) => {
 
   const token = await at.toJwt();
 
-  await db.insert(voiceSessionsTable).values({
-    roomName,
-    participantName,
-    startedAt: new Date(),
-  }).onConflictDoNothing();
+  // 4. Record session in DB
+  await db
+    .insert(voiceSessionsTable)
+    .values({ roomName, participantName, startedAt: new Date() })
+    .onConflictDoNothing();
 
-  res.json({
-    token,
-    roomName,
-    serverUrl,
-  });
+  res.json({ token, roomName, serverUrl });
 });
 
 export default router;
