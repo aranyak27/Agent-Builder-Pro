@@ -321,10 +321,16 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    import multiprocessing
-    # Force 'fork' start method — avoids forkserver path-resolution crash in production
-    # (forkserver tries to re-exec the script by relative path which fails in the container).
-    multiprocessing.set_start_method("fork", force=True)
+    import sys
+
+    # Fix forkserver path resolution in production: the forkserver process re-execs
+    # the main script by the path in sys.argv[0].  If that path is relative
+    # (e.g. "artifacts/voice-agent-worker/agent.py") but the forkserver CWD differs
+    # from the caller's CWD, the re-exec fails.  Making sys.argv[0] absolute and
+    # cd-ing into the script's directory lets forkserver always find "agent.py".
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.argv[0] = os.path.abspath(__file__)
+    os.chdir(_script_dir)
 
     # AGENT_NAME separates dev and production workers on the same LiveKit project.
     # Dev: set AGENT_NAME=mumbai-bank-collector-dev so production calls never route
@@ -334,7 +340,6 @@ if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
-
             agent_name=agent_name,
             port=0,  # random port — avoids conflict with proxy in both dev and production
         )
