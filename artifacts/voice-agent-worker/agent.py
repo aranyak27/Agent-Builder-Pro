@@ -25,7 +25,6 @@ load_dotenv()
 from livekit.agents import (
     AutoSubscribe,
     JobContext,
-    JobProcess,
     WorkerOptions,
     cli,
     function_tool,
@@ -145,16 +144,14 @@ GREETING = (
 )
 
 
-def prewarm(proc: JobProcess):
-    """Preload the VAD model once per worker process at startup."""
-    proc.userdata["vad"] = silero.VAD.load()
-
-
 async def entrypoint(ctx: JobContext):
     """Main agent entrypoint — called for each incoming room/participant."""
     room_name = ctx.room.name
     logger.info(f"Connecting to room: {room_name}")
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+
+    # Load VAD inline — avoids multiprocessing forkserver path issues in production
+    vad = silero.VAD.load()
 
     # Build the OpenAI client — uses Replit AI Integrations proxy when available
     openai_base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL")
@@ -246,7 +243,7 @@ async def entrypoint(ctx: JobContext):
     # ────────────────────────────────────────────────────────────────────────
 
     session = AgentSession(
-        vad=ctx.proc.userdata["vad"],
+        vad=vad,
         stt=deepgram.STT(
             model="nova-2-phonecall",
             api_key=os.environ["DEEPGRAM_API_KEY"],
@@ -332,7 +329,7 @@ if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
-            prewarm_fnc=prewarm,
+
             agent_name=agent_name,
             port=0,  # random port — avoids conflict with proxy in both dev and production
         )
