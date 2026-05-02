@@ -2,7 +2,7 @@ import { useGetVoiceSession, useGetVoiceSessionMessages } from "@workspace/api-c
 import { useParams, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Loader2, ArrowLeft, User, Bot, Clock, Calendar, CheckCircle2, PhoneCall, AlertCircle, PhoneForwarded, CreditCard } from "lucide-react";
+import { Loader2, ArrowLeft, User, Bot, Clock, Calendar, CheckCircle2, PhoneCall, AlertCircle, PhoneForwarded, CreditCard, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -55,6 +55,8 @@ export function SessionDetail() {
 
   const outcomeKey = (session as any).outcomeType as string | null | undefined;
   const outcomeData = (session as any).outcomeData as Record<string, string> | null | undefined;
+  const confidence = (session as any).confidence as number | null | undefined;
+  const needsReview = (session as any).needsReview as boolean | null | undefined;
   const outcomeMeta = outcomeKey ? OUTCOME_META[outcomeKey] : null;
 
   return (
@@ -87,7 +89,12 @@ export function SessionDetail() {
       <Tabs defaultValue="transcript" className="flex-1 flex flex-col min-h-0">
         <TabsList className="w-fit">
           <TabsTrigger value="transcript">Transcript</TabsTrigger>
-          <TabsTrigger value="outcome">Outcome / Intent</TabsTrigger>
+          <TabsTrigger value="outcome" className="relative">
+            Outcome / Intent
+            {needsReview && (
+              <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-orange-500" />
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Transcript Tab ─────────────────────────────────────────── */}
@@ -158,20 +165,48 @@ export function SessionDetail() {
             </Card>
           ) : (
             <>
-              {/* Outcome type card */}
-              <Card className={cn("border", outcomeMeta?.bg ?? "bg-muted")}>
-                <CardContent className="p-5 flex items-center gap-4">
-                  {outcomeMeta && (
-                    <div className={cn("h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0", outcomeMeta.bg)}>
-                      <outcomeMeta.icon className={cn("h-5 w-5", outcomeMeta.color)} />
-                    </div>
-                  )}
+              {/* Needs Review banner */}
+              {needsReview && (
+                <div className="flex items-start gap-3 rounded-lg border border-orange-300 bg-orange-50 px-4 py-3">
+                  <AlertTriangle className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Call Outcome</p>
-                    <p className={cn("text-lg font-bold mt-0.5", outcomeMeta?.color ?? "text-foreground")}>
-                      {outcomeMeta?.label ?? outcomeKey.replace(/_/g, " ")}
+                    <p className="text-sm font-semibold text-orange-800">Needs Human Review</p>
+                    <p className="text-xs text-orange-700 mt-0.5">
+                      The agent's confidence was below 80%
+                      {confidence !== null && confidence !== undefined ? ` (${confidence}%)` : ""}.
+                      Please verify this outcome manually before acting on it.
                     </p>
                   </div>
+                </div>
+              )}
+
+              {/* Outcome type card */}
+              <Card className={cn("border", outcomeMeta?.bg ?? "bg-muted")}>
+                <CardContent className="p-5 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    {outcomeMeta && (
+                      <div className={cn("h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0", outcomeMeta.bg)}>
+                        <outcomeMeta.icon className={cn("h-5 w-5", outcomeMeta.color)} />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Call Outcome</p>
+                      <p className={cn("text-lg font-bold mt-0.5", outcomeMeta?.color ?? "text-foreground")}>
+                        {outcomeMeta?.label ?? outcomeKey.replace(/_/g, " ")}
+                      </p>
+                    </div>
+                  </div>
+                  {/* Confidence pill */}
+                  {confidence !== null && confidence !== undefined && (
+                    <div className={cn(
+                      "rounded-full px-3 py-1 text-sm font-semibold border",
+                      confidence >= 80
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                        : "bg-orange-50 border-orange-200 text-orange-700"
+                    )}>
+                      {confidence}% confidence
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 

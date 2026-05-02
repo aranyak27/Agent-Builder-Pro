@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -14,6 +14,8 @@ export const voiceSessionsTable = pgTable("voice_sessions", {
   durationSeconds: integer("duration_seconds"),
   outcomeType: text("outcome_type").$type<OutcomeType>(),
   outcomeData: jsonb("outcome_data").$type<Record<string, string>>(),
+  confidence: integer("confidence"),
+  needsReview: boolean("needs_review").default(false).notNull(),
 });
 
 export const insertVoiceSessionSchema = createInsertSchema(voiceSessionsTable).omit({ id: true });

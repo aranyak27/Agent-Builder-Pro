@@ -97,6 +97,14 @@ Use the outcome type that best describes how the call ended:
 - dispute: customer disputes the debt or amount. Fields: reason.
 - transfer_to_human: abusive, emergency, or job loss. Fields: reason.
 
+CONFIDENCE RATING — include in every outcome capture:
+Rate your confidence (0–100) that you correctly classified the outcome:
+- 90–100: Customer explicitly confirmed all key details (amount + date, or payment mode + date, etc.)
+- 75–89: Customer gave a clear answer but one detail was vague or inferred
+- 50–74: Customer's intent was unclear, you had to infer the outcome
+- 0–49: Customer hung up, was unresponsive, or the call ended without a clear resolution
+Any outcome with confidence below 80 will automatically be flagged for human review.
+
 Say a brief closing line to the customer AFTER calling the tool, then end the call.
 
 ENDING THE CALL:
@@ -139,6 +147,10 @@ async def entrypoint(ctx: JobContext):
             str,
             "The call outcome type. One of: promise_to_pay, already_paid, callback_request, dispute, transfer_to_human",
         ],
+        confidence: Annotated[
+            int,
+            "Your confidence (0–100) that this outcome classification is correct. Below 80 triggers human review.",
+        ],
         amount: Annotated[str, "Amount the customer committed to pay (for promise_to_pay)"] = "",
         payment_date: Annotated[str, "Date of payment or promised payment (for promise_to_pay or already_paid)"] = "",
         payment_mode: Annotated[str, "Payment mode used, e.g. UPI, NEFT, card (for already_paid)"] = "",
@@ -149,7 +161,11 @@ async def entrypoint(ctx: JobContext):
         Capture the structured outcome of this collections call and send it to
         the CRM. Must be called once before ending every call. The call will
         disconnect automatically a few seconds after this tool is called.
+        Outcomes with confidence below 80 are automatically flagged for human review.
         """
+        confidence_clamped = max(0, min(100, confidence))
+        needs_review = confidence_clamped < 80
+
         outcome_data: dict[str, str] = {}
         if amount:
             outcome_data["amount"] = amount
@@ -166,6 +182,8 @@ async def entrypoint(ctx: JobContext):
             "roomName": room_name,
             "outcomeType": outcome_type,
             "outcomeData": outcome_data,
+            "confidence": confidence_clamped,
+            "needsReview": needs_review,
         }
 
         try:
@@ -176,7 +194,10 @@ async def entrypoint(ctx: JobContext):
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
                     result = await resp.json()
-                    logger.info(f"Outcome captured: {outcome_type} → session {result.get('sessionId')}")
+                    logger.info(
+                        f"Outcome captured: {outcome_type} | confidence={confidence_clamped}% "
+                        f"| needs_review={needs_review} → session {result.get('sessionId')}"
+                    )
         except Exception as e:
             logger.error(f"Failed to capture outcome: {e}")
 
@@ -188,7 +209,8 @@ async def entrypoint(ctx: JobContext):
             await ctx.room.disconnect()
 
         asyncio.create_task(_disconnect_after_closing())
-        return f"Outcome recorded: {outcome_type}. Say your closing line now — the call will end in a few seconds."
+        review_note = " This will be flagged for human review." if needs_review else ""
+        return f"Outcome recorded: {outcome_type} (confidence {confidence_clamped}%).{review_note} Say your closing line now — the call will end in a few seconds."
 
     # ────────────────────────────────────────────────────────────────────────
 

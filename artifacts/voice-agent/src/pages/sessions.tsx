@@ -1,7 +1,7 @@
 import { useListVoiceSessions } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Calendar, Clock, MessageSquare, ArrowRight, FileText } from "lucide-react";
+import { Loader2, Calendar, Clock, MessageSquare, ArrowRight, FileText, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 
@@ -20,6 +20,15 @@ function OutcomeBadge({ type }: { type: string | null | undefined }) {
   return (
     <span className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold ${meta.color}`}>
       {meta.label}
+    </span>
+  );
+}
+
+function NeedsReviewBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md border border-orange-300 bg-orange-500/15 px-2.5 py-0.5 text-xs font-semibold text-orange-700">
+      <AlertTriangle className="h-3 w-3" />
+      Needs Review
     </span>
   );
 }
@@ -55,59 +64,69 @@ export function Sessions() {
         </Card>
       ) : (
         <div className="grid gap-3">
-          {data.sessions.map((session) => (
-            <Link key={session.id} href={`/sessions/${session.id}`} className="block">
-              <Card className="hover:border-primary/40 hover:shadow-md transition-all duration-200 cursor-pointer">
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between gap-4">
-                    {/* Left: room + meta */}
-                    <div className="min-w-0 flex-1 space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" />
-                        <span className="font-semibold text-base truncate">{session.roomName}</span>
-                        <OutcomeBadge type={session.outcomeType} />
+          {data.sessions.map((session) => {
+            const needsReview = (session as any).needsReview as boolean | null;
+            const confidence = (session as any).confidence as number | null;
+            return (
+              <Link key={session.id} href={`/sessions/${session.id}`} className="block">
+                <Card className={`hover:border-primary/40 hover:shadow-md transition-all duration-200 cursor-pointer ${needsReview ? "border-orange-300 bg-orange-50/30" : ""}`}>
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between gap-4">
+                      {/* Left: room + meta */}
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" />
+                          <span className="font-semibold text-base truncate">{session.roomName}</span>
+                          <OutcomeBadge type={session.outcomeType} />
+                          {needsReview && <NeedsReviewBadge />}
+                        </div>
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground pl-4">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {format(new Date(session.startedAt), "dd MMM yyyy, HH:mm")}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {session.durationSeconds ? `${session.durationSeconds}s` : "—"}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <MessageSquare className="h-3 w-3" />
+                            {session.messageCount} messages
+                          </span>
+                          {confidence !== null && confidence !== undefined && (
+                            <span className={`font-medium ${confidence >= 80 ? "text-emerald-600" : "text-orange-600"}`}>
+                              {confidence}% confidence
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground pl-4">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {format(new Date(session.startedAt), "dd MMM yyyy, HH:mm")}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {session.durationSeconds ? `${session.durationSeconds}s` : "—"}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <MessageSquare className="h-3 w-3" />
-                          {session.messageCount} messages
-                        </span>
+
+                      {/* Right: participant + arrow */}
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <div className="text-right hidden sm:block">
+                          <p className="text-sm font-medium">{session.participantName}</p>
+                          <p className="text-xs text-muted-foreground">Customer</p>
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
                       </div>
                     </div>
 
-                    {/* Right: participant + arrow */}
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <div className="text-right hidden sm:block">
-                        <p className="text-sm font-medium">{session.participantName}</p>
-                        <p className="text-xs text-muted-foreground">Customer</p>
+                    {/* Outcome detail row */}
+                    {session.outcomeData && Object.keys(session.outcomeData).length > 0 && (
+                      <div className="mt-3 pl-4 flex flex-wrap gap-3 border-t pt-3">
+                        {Object.entries(session.outcomeData).map(([k, v]) => (
+                          <span key={k} className="text-xs text-muted-foreground">
+                            <span className="font-medium text-foreground capitalize">{k.replace(/_/g, " ")}:</span>{" "}
+                            {String(v)}
+                          </span>
+                        ))}
                       </div>
-                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                  </div>
-
-                  {/* Outcome detail row */}
-                  {session.outcomeData && Object.keys(session.outcomeData).length > 0 && (
-                    <div className="mt-3 pl-4 flex flex-wrap gap-3 border-t pt-3">
-                      {Object.entries(session.outcomeData).map(([k, v]) => (
-                        <span key={k} className="text-xs text-muted-foreground">
-                          <span className="font-medium text-foreground capitalize">{k.replace(/_/g, " ")}:</span>{" "}
-                          {String(v)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+                    )}
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>

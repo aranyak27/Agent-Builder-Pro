@@ -30,6 +30,8 @@ router.get("/sessions", async (req, res) => {
         durationSeconds: voiceSessionsTable.durationSeconds,
         outcomeType: voiceSessionsTable.outcomeType,
         outcomeData: voiceSessionsTable.outcomeData,
+        confidence: voiceSessionsTable.confidence,
+        needsReview: voiceSessionsTable.needsReview,
         messageCount: count(voiceMessagesTable.id),
       })
       .from(voiceSessionsTable)
@@ -63,6 +65,8 @@ router.get("/sessions/:id", async (req, res) => {
       durationSeconds: voiceSessionsTable.durationSeconds,
       outcomeType: voiceSessionsTable.outcomeType,
       outcomeData: voiceSessionsTable.outcomeData,
+      confidence: voiceSessionsTable.confidence,
+      needsReview: voiceSessionsTable.needsReview,
       messageCount: count(voiceMessagesTable.id),
     })
     .from(voiceSessionsTable)

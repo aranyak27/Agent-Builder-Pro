@@ -5,7 +5,7 @@ import { eq, desc } from "drizzle-orm";
 const router = Router();
 
 router.post("/outcome", async (req, res) => {
-  const { roomName, outcomeType, outcomeData } = req.body ?? {};
+  const { roomName, outcomeType, outcomeData, confidence, needsReview } = req.body ?? {};
 
   if (!roomName || typeof roomName !== "string") {
     res.status(400).json({ error: "roomName is required" });
@@ -19,6 +19,9 @@ router.post("/outcome", async (req, res) => {
     res.status(400).json({ error: "outcomeData must be an object" });
     return;
   }
+
+  const confidenceValue = typeof confidence === "number" ? Math.max(0, Math.min(100, Math.round(confidence))) : null;
+  const needsReviewValue = typeof needsReview === "boolean" ? needsReview : (confidenceValue !== null ? confidenceValue < 80 : false);
 
   // Find the most recent session for this room
   const [session] = await db
@@ -36,10 +39,13 @@ router.post("/outcome", async (req, res) => {
   // Persist outcome to DB
   await db
     .update(voiceSessionsTable)
-    .set({ outcomeType, outcomeData })
+    .set({ outcomeType, outcomeData, confidence: confidenceValue, needsReview: needsReviewValue })
     .where(eq(voiceSessionsTable.id, session.id));
 
-  req.log.info({ sessionId: session.id, outcomeType, outcomeData }, "Call outcome captured");
+  req.log.info(
+    { sessionId: session.id, outcomeType, outcomeData, confidence: confidenceValue, needsReview: needsReviewValue },
+    "Call outcome captured"
+  );
 
   // Forward to external CRM webhook if configured
   const webhookUrl = process.env.OUTCOME_WEBHOOK_URL;
@@ -53,6 +59,8 @@ router.post("/outcome", async (req, res) => {
         startedAt: session.startedAt,
         outcomeType,
         outcomeData,
+        confidence: confidenceValue,
+        needsReview: needsReviewValue,
         capturedAt: new Date().toISOString(),
       };
       await fetch(webhookUrl, {
@@ -66,7 +74,7 @@ router.post("/outcome", async (req, res) => {
     }
   }
 
-  res.json({ ok: true, sessionId: session.id, outcomeType });
+  res.json({ ok: true, sessionId: session.id, outcomeType, needsReview: needsReviewValue });
 });
 
 export default router;
