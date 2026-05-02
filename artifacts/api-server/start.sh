@@ -8,14 +8,6 @@ python3 -m pip install -q -r artifacts/voice-agent-worker/requirements.txt \
   && echo "[start.sh] Python dependencies ready." \
   || echo "[start.sh] WARNING: pip install had errors — worker may still run if already installed."
 
-# ── Pre-warm silero VAD model (downloads & caches on cold start) ─────────────
-# This runs synchronously before the worker starts so the model is always
-# cached in .pythonlibs when the worker's entrypoint calls silero.VAD.load().
-# Without this, production cold-start downloads the model inside a subprocess
-# which exceeds the livekit-agents initialization timeout and kills every call.
-echo "[start.sh] Pre-warming silero VAD model..."
-python3 -c "from livekit.plugins import silero; silero.VAD.load(); print('[start.sh] Silero VAD model ready.')"
-
 # ── Voice Agent Worker (background, auto-restart on crash) ───────────────────
 # IMPORTANT: No sed pipe — output goes directly to the container log so nothing
 # is buffered or dropped.  The livekit forkserver re-execs the script by

@@ -4,7 +4,7 @@ Voice Agent Worker  — Mumbai Bank Collections Agent (v1 prompt)
 LiveKit Agents v1.x using:
 - Deepgram  — Speech-to-Text (STT) + Text-to-Speech (TTS)
 - OpenAI    — Language Model (LLM) via Replit AI proxy
-- Silero    — Voice Activity Detection (VAD)
+- Deepgram endpointing for turn detection (no local VAD — avoids CPU spikes)
 
 Usage:
   python3 agent.py start    # production mode (wait for dispatch)
@@ -25,23 +25,14 @@ load_dotenv()
 from livekit.agents import (
     AutoSubscribe,
     JobContext,
-    JobProcess,
     WorkerOptions,
     cli,
     function_tool,
 )
 from livekit.agents.voice import Agent, AgentSession
-from livekit.plugins import deepgram, openai as lk_openai, silero
+from livekit.plugins import deepgram, openai as lk_openai
 
 logger = logging.getLogger("voice-agent")
-
-
-
-def prewarm(proc: JobProcess) -> None:
-    """Load the silero VAD model before any call arrives.
-    Runs once per subprocess — model takes ~5s on cold start, then instant thereafter.
-    initialize_process_timeout must be > 10s to accommodate this."""
-    proc.userdata["vad"] = silero.VAD.load()
 
 
 # Internal API base — always localhost (co-located with API server in both dev and prod)
@@ -155,9 +146,6 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Connecting to room: {room_name}")
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-    # VAD was loaded in prewarm() before this call arrived — just grab it.
-    vad = ctx.proc.userdata["vad"]
-
     # Build the OpenAI client — uses Replit AI Integrations proxy when available
     openai_base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL")
     openai_api_key = (
@@ -248,11 +236,11 @@ async def entrypoint(ctx: JobContext):
     # ────────────────────────────────────────────────────────────────────────
 
     session = AgentSession(
-        vad=vad,
         stt=deepgram.STT(
-            model="nova-2-phonecall",
+            model="nova-2-general",
             api_key=os.environ["DEEPGRAM_API_KEY"],
             language="en-IN",
+            endpointing_ms=400,
         ),
         llm=lk_openai.LLM(
             model="gpt-4o-mini",
@@ -347,12 +335,8 @@ if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
-            prewarm_fnc=prewarm,
-            # Silero VAD takes ~5s on cold start; default 10s timeout is too tight.
-            initialize_process_timeout=30.0,
-            # Only pre-warm 1 idle process. The default of 4 causes all 4 to load
-            # the silero model simultaneously → RAM spikes → load > 0.7 threshold
-            # → worker marks itself unavailable and rejects every incoming call.
+            # No VAD prewarm needed — using Deepgram endpointing for turn detection.
+            # This eliminates subprocess CPU spikes that caused "worker at full capacity".
             num_idle_processes=1,
             agent_name=agent_name,
             port=0,
