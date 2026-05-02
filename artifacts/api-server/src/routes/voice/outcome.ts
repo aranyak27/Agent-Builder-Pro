@@ -24,16 +24,22 @@ router.post("/outcome", async (req, res) => {
   const needsReviewValue = typeof needsReview === "boolean" ? needsReview : (confidenceValue !== null ? confidenceValue < 80 : false);
 
   // Find the most recent session for this room
-  const [session] = await db
+  let [session] = await db
     .select()
     .from(voiceSessionsTable)
     .where(eq(voiceSessionsTable.roomName, roomName))
     .orderBy(desc(voiceSessionsTable.startedAt))
     .limit(1);
 
+  // If no session exists (worker and API on different DBs), create a placeholder
+  // so outcome data is never silently dropped.
   if (!session) {
-    res.status(404).json({ error: "Session not found for room: " + roomName });
-    return;
+    req.log.warn({ roomName }, "No session found for room — creating placeholder session for outcome");
+    const [created] = await db
+      .insert(voiceSessionsTable)
+      .values({ roomName, participantName: "unknown", startedAt: new Date() })
+      .returning();
+    session = created;
   }
 
   // Persist outcome to DB

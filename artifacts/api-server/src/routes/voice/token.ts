@@ -6,7 +6,10 @@ import { voiceSessionsTable } from "@workspace/db";
 
 const router = Router();
 
-const AGENT_NAME = "mumbai-bank-collector";
+// AGENT_NAME must match the worker's registration name.
+// Dev: set AGENT_NAME=mumbai-bank-collector-dev in env so dev calls go to the
+// dev worker and production calls go to the production worker.
+const AGENT_NAME = process.env.AGENT_NAME ?? "mumbai-bank-collector";
 
 router.post("/token", async (req, res) => {
   const parse = CreateVoiceTokenBody.safeParse(req.body);

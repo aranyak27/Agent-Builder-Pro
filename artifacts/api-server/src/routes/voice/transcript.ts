@@ -21,16 +21,22 @@ router.post("/transcript", async (req, res) => {
   }
 
   // Find the most recent session for this room
-  const [session] = await db
+  let [session] = await db
     .select({ id: voiceSessionsTable.id })
     .from(voiceSessionsTable)
     .where(eq(voiceSessionsTable.roomName, roomName))
     .orderBy(desc(voiceSessionsTable.startedAt))
     .limit(1);
 
+  // If no session exists yet (e.g. worker picked up a call before token route ran,
+  // or the session is in a different DB), create a placeholder so data is never lost.
   if (!session) {
-    res.status(404).json({ error: "Session not found for room: " + roomName });
-    return;
+    req.log.warn({ roomName }, "No session found for room — creating placeholder session");
+    const [created] = await db
+      .insert(voiceSessionsTable)
+      .values({ roomName, participantName: "unknown", startedAt: new Date() })
+      .returning({ id: voiceSessionsTable.id });
+    session = created;
   }
 
   const [inserted] = await db

@@ -324,11 +324,16 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
+    # AGENT_NAME separates dev and production workers on the same LiveKit project.
+    # Dev: set AGENT_NAME=mumbai-bank-collector-dev so production calls never route
+    # to the dev worker.  Production start.sh leaves this unset → "mumbai-bank-collector".
+    agent_name = os.environ.get("AGENT_NAME", "mumbai-bank-collector")
+    logger.info(f"Starting worker as agent_name={agent_name!r}")
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
-            agent_name="mumbai-bank-collector",
+            agent_name=agent_name,
             port=0,  # random port — avoids conflict with proxy in both dev and production
         )
     )

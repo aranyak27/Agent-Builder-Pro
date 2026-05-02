@@ -64,5 +64,8 @@ externalPort = 3000
 [userenv.shared]
 LIVEKIT_URL = "wss://voiceaiaranyak-z4qcxrcz.livekit.cloud"
 
+[userenv.development]
+AGENT_NAME = "mumbai-bank-collector-dev"
+
 [nix]
 channel = "stable-25_05"
