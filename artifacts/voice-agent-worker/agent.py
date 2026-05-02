@@ -30,7 +30,7 @@ from livekit.agents import (
     function_tool,
 )
 from livekit.agents.voice import Agent, AgentSession
-from livekit.plugins import cartesia, deepgram, openai as lk_openai, silero
+from livekit.plugins import deepgram, openai as lk_openai, silero
 
 logger = logging.getLogger("voice-agent")
 
@@ -193,9 +193,11 @@ async def entrypoint(ctx: JobContext):
             base_url=openai_base_url,
             api_key=openai_api_key,
         ),
-        tts=cartesia.TTS(
-            api_key=os.environ["CARTESIA_API_KEY"],
-            voice="a0e99841-438c-4a64-b679-ae501e7d6091",
+        tts=lk_openai.TTS(
+            model="tts-1",
+            voice="shimmer",          # professional female voice for Priya
+            base_url=openai_base_url,
+            api_key=openai_api_key,
         ),
         allow_interruptions=True,
         min_endpointing_delay=0.5,
