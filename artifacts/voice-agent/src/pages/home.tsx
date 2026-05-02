@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useCreateVoiceToken } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,9 +113,24 @@ export function Home() {
 function ActiveCallUI({ roomName, onLeave }: { roomName: string, onLeave: () => void }) {
   const connectionState = useConnectionState();
   const { state: agentState, audioTrack } = useVoiceAssistant();
+  const [waitSeconds, setWaitSeconds] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isConnected = connectionState === ConnectionState.Connected;
-  
+  // Agent has joined when it has an audio track or is actively speaking/listening/thinking
+  const agentReady = agentState === "speaking" || agentState === "listening" || agentState === "thinking" || !!audioTrack;
+
+  // Count how long we've been waiting for the agent
+  useEffect(() => {
+    if (isConnected && !agentReady) {
+      setWaitSeconds(0);
+      timerRef.current = setInterval(() => setWaitSeconds(s => s + 1), 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [isConnected, agentReady]);
+
   return (
     <Card className="w-full shadow-2xl border-primary/40 bg-card/95 backdrop-blur">
       <CardHeader className="pb-4 border-b border-border">
@@ -140,7 +155,32 @@ function ActiveCallUI({ roomName, onLeave }: { roomName: string, onLeave: () => 
       </CardHeader>
       <CardContent className="pt-8 pb-10 flex flex-col items-center justify-center min-h-[300px]">
         
-        {isConnected ? (
+        {!isConnected ? (
+          <div className="flex flex-col items-center text-muted-foreground">
+            <Loader2 className="h-8 w-8 animate-spin mb-4" />
+            <p>Negotiating handshake...</p>
+          </div>
+        ) : !agentReady ? (
+          // Connected to room but agent not yet speaking — show explicit wait message
+          <div className="flex flex-col items-center text-center gap-4">
+            <div className="relative flex items-center justify-center h-24 w-24">
+              <div className="absolute inset-0 rounded-full bg-primary/10 animate-pulse" />
+              <Loader2 className="h-10 w-10 text-primary animate-spin relative z-10" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-semibold">Priya is connecting…</h3>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                Please stay on the line. Priya will greet you in a moment.
+              </p>
+              {waitSeconds >= 5 && (
+                <p className="text-xs text-muted-foreground font-mono">
+                  Waiting {waitSeconds}s — please keep the call open
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          // Agent is active
           <div className="flex flex-col items-center w-full max-w-md">
             <div className="mb-8 relative flex items-center justify-center h-32 w-full">
               <div className={cn(
@@ -166,18 +206,14 @@ function ActiveCallUI({ roomName, onLeave }: { roomName: string, onLeave: () => 
             </div>
             
             <div className="text-center space-y-2">
-              <h3 className="text-xl font-medium">Nexus AI Agent</h3>
+              <h3 className="text-xl font-medium">Priya — Mumbai Bank</h3>
               <p className="text-sm font-mono text-muted-foreground uppercase tracking-widest">
-                {agentState === "speaking" ? "Transmitting..." : 
-                 agentState === "listening" ? "Receiving..." : 
-                 "Standby"}
+                {agentState === "speaking" ? "Speaking..." : 
+                 agentState === "listening" ? "Listening..." :
+                 agentState === "thinking" ? "Thinking..." :
+                 "Ready"}
               </p>
             </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center text-muted-foreground">
-            <Loader2 className="h-8 w-8 animate-spin mb-4" />
-            <p>Negotiating handshake...</p>
           </div>
         )}
       </CardContent>

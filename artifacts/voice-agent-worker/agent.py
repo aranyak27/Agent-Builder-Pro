@@ -146,12 +146,7 @@ ENDING THE CALL:
 - This is a real-time voice call — keep all responses concise and conversational.
 """
 
-GREETING = (
-    "Hello, this is Priya calling from Mumbai Bank. "
-    "Am I speaking with the account holder? "
-    "I'm reaching out regarding your credit card account which has an overdue balance. "
-    "Do you have a moment to discuss this?"
-)
+GREETING = "Hello, this is Priya from Mumbai Bank. Am I speaking with the account holder?"
 
 
 async def entrypoint(ctx: JobContext):
