@@ -240,6 +240,41 @@ async def entrypoint(ctx: JobContext):
         tools=[capture_call_outcome],
     )
 
+    # ── Transcript capture: save every user/assistant turn to the DB ─────────
+    @session.on("conversation_item_added")
+    def on_conversation_item_added(ev) -> None:
+        item = ev.item
+        # Only capture user and assistant messages (skip tool calls, system, etc.)
+        if not hasattr(item, "role") or item.role not in ("user", "assistant"):
+            return
+        # Extract text content — ChatMessage.content is list[str | ImageContent | AudioContent | Instructions]
+        # Each element may be a plain str or an object with a .text property.
+        parts: list[str] = []
+        for chunk in item.content:
+            if isinstance(chunk, str):
+                parts.append(chunk)
+            elif hasattr(chunk, "text"):
+                t = chunk.text
+                if isinstance(t, str):
+                    parts.append(t)
+        text = " ".join(parts).strip()
+        if not text:
+            return
+
+        async def _save_message(role: str, content: str) -> None:
+            try:
+                async with aiohttp.ClientSession() as http:
+                    await http.post(
+                        f"{API_BASE}/api/voice/transcript",
+                        json={"roomName": room_name, "role": role, "content": content},
+                        timeout=aiohttp.ClientTimeout(total=5),
+                    )
+            except Exception as exc:
+                logger.warning(f"Failed to save transcript message: {exc}")
+
+        asyncio.ensure_future(_save_message(item.role, text))
+    # ─────────────────────────────────────────────────────────────────────────
+
     await session.start(agent, room=ctx.room)
 
     participant = await ctx.wait_for_participant()
