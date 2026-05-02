@@ -223,16 +223,40 @@ async def entrypoint(ctx: JobContext):
                 else:
                     logger.error(f"All 3 outcome save attempts failed for room {room_name}: {e}")
 
-        # End the call after a short delay so Priya can speak the closing line.
-        # transfer_to_human ends faster (no need for a long pleasantry).
+        # Deterministic closing line per outcome — we speak it ourselves and
+        # WAIT for playout to fully finish before tearing the room down. This
+        # is the only reliable way to guarantee the customer hears the
+        # closing message; relying on the LLM to generate one + a fixed sleep
+        # truncated transfers (the room got deleted mid-sentence).
+        closing_lines = {
+            "transfer_to_human": "I understand. I'm transferring you to a human agent now who will assist you further. Please stay on the line. Goodbye.",
+            "promise_to_pay": "Thank you for confirming. We appreciate your time. Have a good day. Goodbye.",
+            "already_paid": "Thank you for letting me know. It will reflect within two working days. Have a good day. Goodbye.",
+            "callback_request": "No problem, we will call you back at the requested time. Have a good day. Goodbye.",
+            "dispute": "Understood. I have noted your concern and a human agent will review it. Have a good day. Goodbye.",
+        }
+        closing = closing_lines.get(
+            outcome_type,
+            "Thank you for your time. Have a good day. Goodbye.",
+        )
+
         # We DELETE the room (server-side) instead of just disconnecting the
         # agent — that way the customer's client gets a clean Disconnected
-        # event and the UI returns to the start screen instead of getting
-        # stuck on a "connecting…" spinner trying to reach an empty room.
-        delay_seconds = 3 if outcome_type == "transfer_to_human" else 6
+        # event and the UI returns to the start screen instead of being stuck
+        # on a "connecting…" spinner trying to reach an empty room.
+        async def _say_closing_then_end():
+            try:
+                handle = session.say(closing, allow_interruptions=False)
+                # Block until TTS playout actually finishes — no more guessing
+                # at fixed sleeps that truncated the closing line.
+                await handle.wait_for_playout()
+                # Tiny tail buffer so the last syllable doesn't get clipped by
+                # the room teardown.
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logger.warning(f"Closing line playout failed: {e} — proceeding to end call")
+                await asyncio.sleep(2)
 
-        async def _end_call_after_closing():
-            await asyncio.sleep(delay_seconds)
             logger.info(f"Ending call (outcome={outcome_type}) — deleting room {room_name}")
             try:
                 async with lk_api.LiveKitAPI() as lkapi:
@@ -246,9 +270,11 @@ async def entrypoint(ctx: JobContext):
                 except Exception:
                     pass
 
-        asyncio.create_task(_end_call_after_closing())
+        asyncio.create_task(_say_closing_then_end())
         review_note = " This will be flagged for human review." if needs_review else ""
-        return f"Outcome recorded: {outcome_type} (confidence {confidence_clamped}%).{review_note} Say your closing line now — the call will end in a few seconds."
+        # Empty-ish return so the LLM doesn't generate ANOTHER reply on top
+        # of the deterministic closing we're already speaking.
+        return f"OK. Outcome recorded ({outcome_type}, confidence {confidence_clamped}%).{review_note} Do not say anything else — the closing message is being spoken now."
 
     # ────────────────────────────────────────────────────────────────────────
 
